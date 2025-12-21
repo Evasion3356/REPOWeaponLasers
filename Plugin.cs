@@ -70,47 +70,72 @@ namespace WeaponLasers
 				{
 					foreach (PhysGrabObject physGrabObject in Plugin.CatchedPhysGrabObjects)
 					{
-						try
+						if (physGrabObject == null || !physGrabObject.grabbedLocal || !physGrabObject.GetField<bool>("isActive")) continue;
+
+						bool isGun = physGrabObject.GetField<bool>("isGun");
+						if (isGun)
 						{
-							if (physGrabObject != null && physGrabObject.grabbedLocal && physGrabObject.GetField<bool>("isActive"))
+							ItemGun itemGun = physGrabObject.GetComponent<ItemGun>();
+							if (itemGun != null && itemGun.gunMuzzle != null)
 							{
-								bool isGun = physGrabObject.GetField<bool>("isGun");
-								if (isGun)
+								Vector3 barrelPosition = itemGun.gunMuzzle.position;
+								Vector3 barrelDirection = itemGun.gunMuzzle.forward;
+
+								float laserDistance = itemGun.gunRange; // Use actual gun range
+								Vector3 laserEndPoint = barrelPosition + (barrelDirection * laserDistance);
+
+								// Perform raycast to check if laser can hit something
+								RaycastHit hit;
+								Color laserColor = Color.red; // Default: cannot hit (red)
+
+								// Use the SAME LayerMask that the gun uses for shooting
+								int shootLayerMask = SemiFunc.LayerMaskGetVisionObstruct() + LayerMask.GetMask(new string[] { "Enemy" });
+
+								if (Physics.Raycast(barrelPosition, barrelDirection, out hit, laserDistance, shootLayerMask))
 								{
-									ItemGun itemGun = physGrabObject.GetComponent<ItemGun>();
-									if (itemGun != null && itemGun.gunMuzzle != null)
+									// Hit something - use actual hit position
+									laserEndPoint = hit.point;
+
+									// Check what we hit and color accordingly
+									if (hit.collider.gameObject.layer == LayerMask.NameToLayer("Enemy"))
 									{
-										Vector3 barrelPosition = itemGun.gunMuzzle.position;
-										Vector3 barrelDirection = itemGun.gunMuzzle.forward;
+										// Hit an enemy - green
+										laserColor = Color.green;
+									}
+									else
+									{
+										// Try to check if it's an enemy by component
+										Enemy enemy = hit.collider.GetComponentInParent<Enemy>();
+										EnemyParent enemyParent = hit.collider.GetComponentInParent<EnemyParent>();
 
-										// Calculate the end point of the laser (e.g., 100 units forward)
-										float laserDistance = 100f;
-										Vector3 laserEndPoint = barrelPosition + (barrelDirection * laserDistance);
-
-										// Check if camera exists
-										if (Camera.main == null) continue;
-
-										// Convert world positions to screen positions
-										Vector3 screenStart;
-										Vector3 screenEnd;
-										if (Utils.WorldToScreen(Camera.main, barrelPosition, out screenStart) &&
-											Utils.WorldToScreen(Camera.main, laserEndPoint, out screenEnd))
+										if (enemy != null || enemyParent != null)
 										{
-											// Draw the laser line
-											Render.Line(
-												new Vector2(screenStart.x, screenStart.y),
-												new Vector2(screenEnd.x, screenEnd.y),
-												2f,
-												Color.red
-											);
+											// Definitely hit an enemy - green
+											laserColor = Color.green;
+										}
+										else if (hit.collider.gameObject.CompareTag("Player"))
+										{
+											// Hit a player - cyan color
+											laserColor = Color.cyan;
 										}
 									}
 								}
+
+								// Convert world positions to screen positions
+								Vector3 screenStart;
+								Vector3 screenEnd;
+								if (Utils.WorldToScreen(Camera.main, barrelPosition, out screenStart) &&
+									Utils.WorldToScreen(Camera.main, laserEndPoint, out screenEnd))
+								{
+									// Draw the laser line
+									Render.Line(
+										new Vector2(screenStart.x, screenStart.y),
+										new Vector2(screenEnd.x, screenEnd.y),
+										2f,
+										laserColor
+									);
+								}
 							}
-						}
-						catch (Exception ex)
-						{
-							Logger.LogError($"Inner loop error: {ex}");
 						}
 					}
 				}
